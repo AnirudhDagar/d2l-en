@@ -4,8 +4,8 @@
 Now that we have characterized the problem of overfitting,
 we can introduce some standard techniques for regularizing models.
 Recall that we can always mitigate overfitting
-by going out and collecting more training data.
-That can be costly, time consuming,
+by going out and collecting more training data,
+that can be costly, time consuming,
 or entirely out of our control,
 making it impossible in the short run.
 For now, we can assume that we already have
@@ -21,7 +21,7 @@ of the fitted polynomial.
 Indeed, limiting the number of features 
 is a popular technique to avoid overfitting.
 However, simply tossing aside features
-can be too blunt an instrument for the job.
+can be too blunt a hammer for the job.
 Sticking with the polynomial curve-fitting
 example, consider what might happen
 with high-dimensional inputs.
@@ -36,7 +36,7 @@ Note that the number of terms with degree $d$
 blows up rapidly as $d$ grows larger.
 Given $k$ variables, the number of monomials 
 of degree $d$ is ${k - 1 + d} \choose {k - 1}$.
-Even small changes in degree, say from $2$ to $3$,
+Even small changes in degree, say, from $2$ to $3$
 dramatically increase the complexity of our model.
 Thus we often need a more fine-grained tool
 for adjusting function complexity.
@@ -50,7 +50,7 @@ The technique is motivated by the basic intuition
 that among all functions $f$,
 the function $f = 0$ 
 (assigning the value $0$ to all inputs) 
-is in some sense the *simplest*,
+is in some sense the *simplest*
 and that we can measure the complexity 
 of a function by its distance from zero.
 But how precisely should we measure
@@ -58,7 +58,7 @@ the distance between a function and zero?
 There is no single right answer.
 In fact, entire branches of mathematics,
 including parts of functional analysis 
-and the theory of Banach spaces,
+and the theory of Banach spaces
 are devoted to answering this issue.
 
 One simple interpretation might be 
@@ -184,10 +184,11 @@ $$y = 0.05 + \sum_{i = 1}^d 0.01 x_i + \epsilon \text{ where }
 choosing our label to be a linear function of our inputs,
 corrupted by Gaussian noise with zero mean and variance 0.01.
 To make the effects of overfitting pronounced,
-we can increase the dimensionality of our problem to $d = 200$
-and work with a small training set containing only 20 examples.
+we can increase the dimensinoality of our problem to $d = 200$
 
-```{.python .input  n=1}
+and work with a small training set containing only 20 example.
+
+```{.python .input}
 %matplotlib inline
 import d2l
 from mxnet import autograd, gluon, init, np, npx
@@ -196,6 +197,21 @@ npx.set_np()
 
 n_train, n_test, num_inputs, batch_size = 20, 100, 200, 5
 true_w, true_b = np.ones((num_inputs, 1)) * 0.01, 0.05
+train_data = d2l.synthetic_data(true_w, true_b, n_train)
+train_iter = d2l.load_array(train_data, batch_size)
+test_data = d2l.synthetic_data(true_w, true_b, n_test)
+test_iter = d2l.load_array(test_data, batch_size, is_train=False)
+```
+
+```{.python .input}
+#@tab pytorch
+%matplotlib inline
+import d2l_pytorch as d2l
+import torch
+import torch.nn as nn
+
+n_train, n_test, num_inputs, batch_size = 20, 100, 200, 5
+true_w, true_b = torch.ones((num_inputs, 1)) * 0.01, 0.05
 train_data = d2l.synthetic_data(true_w, true_b, n_train)
 train_iter = d2l.load_array(train_data, batch_size)
 test_data = d2l.synthetic_data(true_w, true_b, n_test)
@@ -215,7 +231,7 @@ to randomly initialize our model parameters
 and run `attach_grad` on each to allocate 
 memory for the gradients we will calculate.
 
-```{.python .input  n=2}
+```{.python .input}
 def init_params():
     w = np.random.normal(scale=1, size=(num_inputs, 1))
     b = np.zeros(1)
@@ -224,18 +240,32 @@ def init_params():
     return [w, b]
 ```
 
+```{.python .input}
+#@tab pytorch
+def init_params():
+    w = torch.normal(0, 1, size=(num_inputs, 1), requires_grad=True)
+    b = torch.zeros(1, requires_grad=True)
+    return [w, b]
+```
+
 ### Defining $\ell_2$ Norm Penalty
 
 Perhaps the most convenient way to implement this penalty
 is to square all terms in place and sum them up.
-We divide by $2$ by convention
+We divide by $2$ by convention,
 (when we take the derivative of a quadratic function,
 the $2$ and $1/2$ cancel out, ensuring that the expression
 for the update looks nice and simple).
 
-```{.python .input  n=3}
+```{.python .input}
 def l2_penalty(w):
     return (w**2).sum() / 2
+```
+
+```{.python .input}
+#@tab pytorch
+def l2_penalty(w):
+    return torch.sum(w.pow(2)) / 2
 ```
 
 ### Defining the Train and Test Functions
@@ -247,7 +277,7 @@ have not changed since the previous chapter,
 so we will just import them via `d2l.linreg` and `d2l.squared_loss`.
 The only change here is that our loss now includes the penalty term.
 
-```{.python .input  n=4}
+```{.python .input}
 def train(lambd):
     w, b = init_params()
     net, loss = lambda X: d2l.linreg(X, w, b), d2l.squared_loss
@@ -268,6 +298,28 @@ def train(lambd):
     print('l1 norm of w:', np.abs(w).sum())
 ```
 
+```{.python .input}
+#@tab pytorch
+def train(lambd):
+    w, b = init_params()
+    net, loss = lambda X: d2l.linreg(X, w, b), d2l.squared_loss
+    num_epochs, lr = 100, 0.003
+    animator = d2l.Animator(xlabel='epochs', ylabel='loss', yscale='log',
+                            xlim=[1, num_epochs], legend=['train', 'test'])
+    for epoch in range(1, num_epochs + 1):
+        for X, y in train_iter:
+            with torch.enable_grad():
+                # The L2 norm penalty term has been added, and broadcasting
+                # makes l2_penalty(w) a vector whose length is batch_size
+                l = loss(net(X), y) + lambd * l2_penalty(w)
+            l.sum().backward()
+            d2l.sgd([w, b], lr, batch_size)
+        if epoch % 5 == 0:
+            animator.add(epoch, (d2l.evaluate_loss(net, train_iter, loss),
+                                 d2l.evaluate_loss(net, test_iter, loss)))
+    print('l1 norm of w:', torch.norm(w).item())
+```
+
 ### Training without Regularization
 
 We now run this code with `lambd = 0`, 
@@ -276,7 +328,12 @@ Note that we overfit badly,
 decreasing the training error but not the 
 test error---a textook case of overfitting.
 
-```{.python .input  n=5}
+```{.python .input}
+train(lambd=0)
+```
+
+```{.python .input}
+#@tab pytorch
 train(lambd=0)
 ```
 
@@ -291,7 +348,12 @@ As an exercise, you might want to check
 that the $\ell_2$ norm of the weights $\mathbf{w}$
 has actually decreased.
 
-```{.python .input  n=6}
+```{.python .input}
+train(lambd=3)
+```
+
+```{.python .input}
+#@tab pytorch
 train(lambd=3)
 ```
 
@@ -307,7 +369,7 @@ allowing implementation tricks to add weight decay to the algorithm,
 without any additional computational overhead.
 Since the weight decay portion of the update
 depends only on the current value of each parameter,
-and the optimizer must touch each parameter once anyway.
+and the optimizer must to touch each parameter once anyway.
 
 In the following code, we specify
 the weight decay hyperparameter directly
@@ -320,7 +382,7 @@ when updating model parameters.
 Thus, if we set `wd_mult` to $0$,
 the bias parameter $b$ will not decay.
 
-```{.python .input  n=7}
+```{.python .input}
 def train_gluon(wd):
     net = nn.Sequential()
     net.add(nn.Dense(1))
@@ -346,6 +408,34 @@ def train_gluon(wd):
     print('L1 norm of w:', np.abs(net[0].weight.data()).sum())
 ```
 
+```{.python .input}
+#@tab pytorch
+def train_torch(wd):
+    net = nn.Sequential(nn.Linear(num_inputs, 1))
+    for param in net.parameters():
+        param.data.normal_()
+    loss = nn.MSELoss()
+    num_epochs, lr = 100, 0.003
+    # The bias parameter has not decayed. Bias names generally end with "bias"
+    trainer = torch.optim.SGD([
+        {"params":net[0].weight,'weight_decay': wd},
+        {"params":net[0].bias}], lr=lr)
+    
+    animator = d2l.Animator(xlabel='epochs', ylabel='loss', yscale='log',
+                            xlim=[1, num_epochs], legend=['train', 'test'])
+    for epoch in range(1, num_epochs+1):
+        for X, y in train_iter:
+            with torch.enable_grad():
+                trainer.zero_grad()
+                l = loss(net(X), y)
+            l.backward()
+            trainer.step()
+        if epoch % 5 == 0:
+            animator.add(epoch, (d2l.evaluate_loss(net, train_iter, loss),
+                                 d2l.evaluate_loss(net, test_iter, loss)))
+    print('L1 norm of w:', net[0].weight.norm().item())
+```
+
 The plots look identical to those when 
 we implemented weight decay from scratch.
 However, they run appreciably faster 
@@ -353,20 +443,30 @@ and are easier to implement,
 a benefit that will become more
 pronounced for large problems.
 
-```{.python .input  n=8}
+```{.python .input}
 train_gluon(0)
 ```
 
-```{.python .input  n=9}
+```{.python .input}
+#@tab pytorch
+train_torch(0)
+```
+
+```{.python .input}
 train_gluon(3)
+```
+
+```{.python .input}
+#@tab pytorch
+train_torch(3)
 ```
 
 So far, we only touched upon one notion of
 what constitutes a simple *linear* function.
-Moreover, what constitutes a simple *nonlinear* function
+Moreover, what constitutes a simple *nonlinear* function,
 can be an even more complex question.
 For instance, [Reproducing Kernel Hilbert Spaces (RKHS)](https://en.wikipedia.org/wiki/Reproducing_kernel_Hilbert_space)
-allows one to apply tools introduced 
+allow one to apply tools introduced 
 for linear functions in a nonlinear context.
 Unfortunately, RKHS-based algorithms
 tend to scale purely to large, high-dimensional data.
